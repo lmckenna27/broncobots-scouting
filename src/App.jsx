@@ -46,7 +46,7 @@ function Toast({ message, type, onClose }) {
 // ── Inner app — has access to router hooks ─────────────────────────────────
 function AppInner({ user, authLoaded, authError, signIn, signOut }) {
   const location = useLocation();
-  const { entries, addEntry, updateEntry, clearEntries, deleteEntry, clearEntriesByTeam } = useLiveEntries();
+  const { entries, addEntry, updateEntry, clearEntries, deleteEntry, clearEntriesByTeam } = useLiveEntries(user);
 
   const [config,  setConfig]  = useState(DEFAULT_CONFIG);
   const [history, setHistory] = useState([]);

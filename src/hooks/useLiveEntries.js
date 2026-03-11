@@ -7,13 +7,21 @@ import {
   clearTeamEntries as clearTeamEntriesInFirebase
 } from '../utils/firebase';
 
-export default function useLiveEntries() {
+export default function useLiveEntries(user) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Subscribe to Firebase entries for real-time updates
+  // Only subscribe when user is authenticated
   useEffect(() => {
     setLoading(true);
+    
+    // Don't subscribe if user is not authenticated
+    if (!user) {
+      setEntries([]);
+      setLoading(false);
+      return;
+    }
     
     const unsubscribe = subscribeToEntries((firebaseEntries) => {
       setEntries(firebaseEntries);
@@ -25,7 +33,7 @@ export default function useLiveEntries() {
         unsubscribe();
       }
     };
-  }, []);
+  }, [user]);
 
   const addEntry = useCallback(async (entry) => {
     try {
