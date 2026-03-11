@@ -1,27 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Admin full access
-    function isAdmin() {
-      return request.auth != null &&
-             request.auth.token.email == "lmckenna27@brophybroncos.org";
-    }
-
-    // Allowed users by domain
-    function fromAllowedDomain() {
-      return request.auth != null &&
-             (request.auth.token.email.matches(".*@brophybroncos.org") ||
-              request.auth.token.email.matches(".*@brophyprep.org"));
-    }
-
-    // Apply rules to all documents
     match /{document=**} {
-      // Admin can read/write everything
-      allow read, write: if isAdmin();
-      
-      // Other authenticated users can read/write if from allowed domains
-      allow read, write: if fromAllowedDomain();
+      allow read: if true;
+      allow write: if true;
     }
   }
 }
