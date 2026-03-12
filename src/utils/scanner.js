@@ -396,7 +396,8 @@ function extractDataWithOpenCV(
       scoutingData.Student_ID = isNaN(parseInt(scoutingData.Student_ID, 10))
         ? 0
         : parseInt(scoutingData.Student_ID, 10);
-      scoutingData.Team_Number += filledIndices[0] % 10 || "";
+
+      scoutingData.Team_Number += filledIndices.length !== 0 ? filledIndices[0] % 10 : "";
     } else if (index == 10) {
       scoutingData.Team_Number = isNaN(parseInt(scoutingData.Team_Number, 10))
         ? 0
@@ -456,12 +457,15 @@ function extractDataWithOpenCV(
       };
     } else if (index == 25) {
       scoutingData.Auto_Balls =
-        filledIndices.length == 0 ? 0 : filledIndices[0] * 10;
+        filledIndices.length !== 0 ? filledIndices[0] * 10 : "";
     } else if (index == 26) {
+      console.log(filledIndices[1] - 5);
       scoutingData.Teleop_Balls =
-        filledIndices.length == 0
-          ? 0
-          : filledIndices[0] * 100 + (filledIndices[1] - 5) * 10;
+        filledIndices.length !== 0
+          ? (filledIndices[0] < 6 ? filledIndices[0] * 100 : 0) +
+            ((filledIndices[0] > 5 ? filledIndices[0] : filledIndices[1]) - 5) *
+              10
+          : "";
     } else if (index == 27) {
       scoutingData.Alliance_Score =
         filledIndices[0] * 100 +
