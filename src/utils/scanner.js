@@ -62,7 +62,7 @@ export async function processOMRScans(
         sourceId,
         configJson,
         fillThreshold,
-        outCanvasId,
+        outCanvasId
       );
       dataResult._Filename = file.name;
       extractedDataArray.push(dataResult);
@@ -95,7 +95,7 @@ function extractDataWithOpenCV(
   sourceId,
   config,
   fillThreshold,
-  outCanvasId = null,
+  outCanvasId = null
 ) {
   let src = cv.imread(sourceId);
   let gray = new cv.Mat();
@@ -234,7 +234,7 @@ function extractDataWithOpenCV(
     Teleop_Balls: "",
     Alliance_Score: "",
     Features: {},
-    Happenings: {},
+    Happenings: {}
   };
 
   // ==========================================
@@ -459,7 +459,7 @@ function extractDataWithOpenCV(
       scoutingData.Auto_Balls =
         filledIndices.length !== 0 ? filledIndices[0] * 10 : "";
     } else if (index == 26) {
-      console.log(filledIndices[1] - 5);
+      //console.log(filledIndices[1] - 5);
       scoutingData.Teleop_Balls =
         filledIndices.length !== 0
           ? (filledIndices[0] < 6 ? filledIndices[0] * 100 : 0) +

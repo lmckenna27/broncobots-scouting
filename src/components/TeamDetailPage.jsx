@@ -355,6 +355,7 @@ export default function TeamDetailPage({ team, entries, onBack, onEditEntry, use
 
   // Get the currently selected entry for display
   let currentEntry = teamEntries[selectedEntryIndex] || latest;
+  console.log(currentEntry);
 
   //console.log('Current Entry:', currentEntry);
 
@@ -566,6 +567,7 @@ export default function TeamDetailPage({ team, entries, onBack, onEditEntry, use
                 <span className="entry-log-info">
                   <span className={`entry-badge entry-badge_${e.isEdit ? 'EDIT' : 'NEW'}`}>{e.isEdit ? 'EDIT' : 'NEW'}</span>
                   <span className="muted">{new Date(e.timestamp).toLocaleString()}</span>
+                  <span className="muted">{e.fileName || ""}</span>
                   {(e.userName || e.editedBy) && <span className="entry-user">{e.editedBy || e.userName}</span>}
                 </span>
               </div>

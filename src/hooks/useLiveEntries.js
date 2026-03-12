@@ -50,6 +50,7 @@ export default function useLiveEntries(user) {
       
       // Then save to Firebase
       await saveEntry(newEntry);
+      console.log('Entry added successfully:', newEntry);
     } catch (error) {
       console.error('Error adding entry:', error);
       // Rollback on error - remove the optimistic entry
