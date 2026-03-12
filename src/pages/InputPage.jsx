@@ -37,6 +37,7 @@ export default function InputPage({onSubmit, showToast, user }) {
   const cvFileInputRef = useRef(null);
   const [scanUiOpen, setScanUiOpen] = useState(false);
   const [scanFile, setScanFile] = useState(null);
+  let fileName = "";
   // Load initial value from local storage, or default to 0.011
   // 1. Load the value immediately when the component starts
   const [fillRatio, setFillRatio] = useState(() => {
@@ -185,6 +186,7 @@ export default function InputPage({onSubmit, showToast, user }) {
       features: featuresArr,
       hangLevel: String(scan.Features?.Hang || ''),
       happenings: happeningsArr,
+      fileName: scan._Filename
     }));
 
     showToast("Form filled successfully!", "success");
@@ -194,6 +196,8 @@ export default function InputPage({onSubmit, showToast, user }) {
   const handleSubmit = async () => {
     if (!form.teamNumber) { showToast('Please enter a team number.', 'warning'); return; }
     if (!form.matchNumber) { showToast('Please enter a match number.', 'warning'); return; }
+
+    
 
     setUploading(true);
     const userName = user?.name || user?.email || 'Unknown';
