@@ -237,34 +237,82 @@ function extractDataWithOpenCV(
     Happenings: {},
   };
 
-  // 1. SORT THE SECTIONS (Row-Major: Top-to-Bottom, then Left-to-Right)
-  warpedClusters.sort((a, b) => {
-    // Find the top-most Y and left-most X for Section A
-    let aY = Math.min(...a.map((rect) => rect.y));
-    let aX = Math.min(...a.map((rect) => rect.x));
+  // ==========================================
+  // BUCKET SORTING (THE BULLETPROOF METHOD)
+  // ==========================================
 
-    // Find the top-most Y and left-most X for Section B
-    let bY = Math.min(...b.map((rect) => rect.y));
-    let bX = Math.min(...b.map((rect) => rect.x));
+  // 1. Calculate the Top-Left X/Y for every section to make sorting easy
+  let clustersWithBounds = warpedClusters.map((cluster) => {
+    return {
+      originalCluster: cluster,
+      minY: Math.min(...cluster.map((rect) => rect.y)),
+      minX: Math.min(...cluster.map((rect) => rect.x)),
+    };
+  });
 
-    // If the sections are roughly on the same horizontal line (within 100px)
-    if (Math.abs(aY - bY) < 100) {
-      return aX - bX; // Sort Left-to-Right
+  // 2. Sort strictly Top-to-Bottom
+  clustersWithBounds.sort((a, b) => a.minY - b.minY);
+
+  // 3. Group into physical rows
+  let rows = [];
+  let currentRow = [];
+  let rowTolerance = 60; // Max pixels of vertical wiggle room before starting a new row
+
+  for (let i = 0; i < clustersWithBounds.length; i++) {
+    let currentItem = clustersWithBounds[i];
+
+    if (currentRow.length === 0) {
+      currentRow.push(currentItem);
+    } else {
+      // Compare this item to the very first item in the current row
+      let rowBaselineY = currentRow[0].minY;
+
+      // If it's within the tolerance, it belongs in this row
+      if (Math.abs(currentItem.minY - rowBaselineY) < rowTolerance) {
+        currentRow.push(currentItem);
+      } else {
+        // It's too far down! Save the current row and start a new one
+        rows.push(currentRow);
+        currentRow = [currentItem];
+      }
     }
-    return aY - bY; // Otherwise, sort Top-to-Bottom
+  }
+  // Don't forget to push the very last row!
+  if (currentRow.length > 0) {
+    rows.push(currentRow);
+  }
+
+  // 4. Sort each individual row Left-to-Right
+  rows.forEach((row) => {
+    row.sort((a, b) => a.minX - b.minX);
+  });
+
+  // 5. Smush them all back together into your original array
+  warpedClusters = [];
+  rows.forEach((row) => {
+    row.forEach((item) => {
+      warpedClusters.push(item.originalCluster);
+    });
   });
 
   warpedClusters.forEach((cluster, index) => {
-    // --- ADD THIS SORTING LOGIC HERE ---
-    // Sorts bubbles: First by Column (X), then by Row (Y)
+    // ==========================================
+    // ORIGINAL BUBBLE SORTING RESTORED (DOUBLE-SORT)
+    // ==========================================
+    // Pass 1: Sort by rows first
     cluster.sort((a, b) => {
-      // If bubbles are within 20px of the same X-coordinate, they are in the same column
-      if (Math.abs(a.x - b.x) < 20) {
-        return a.y - b.y; // Sort Top-to-Bottom
-      }
-      return a.x - b.x; // Sort Left-to-Right
+      if (Math.abs(a.y - b.y) > 15) return a.y - b.y;
+      return a.x - b.x;
     });
-    // ------------------------------------
+
+    // Pass 2: Sort by columns
+    cluster.sort((a, b) => {
+      if (Math.abs(a.x - b.x) < 20) {
+        return a.y - b.y;
+      }
+      return a.x - b.x;
+    });
+    // ==========================================
 
     let filledIndices = [];
     cluster.forEach((rect, i) => {
@@ -330,7 +378,6 @@ function extractDataWithOpenCV(
           ? config.sections[index]
           : `Sect: ${index}`;
 
-      // Add background for text readability (Optional but helpful)
       cv.putText(
         src,
         labelText,
@@ -363,7 +410,6 @@ function extractDataWithOpenCV(
         ? 0
         : parseInt(scoutingData.Match_Number, 10);
 
-      //After clean up
       const alliances = ["Blue", "Red"];
       scoutingData.Alliance = alliances[filledIndices[0] - 1] || "None";
     } else if (index == 14) {
@@ -385,7 +431,6 @@ function extractDataWithOpenCV(
     } else if (index == 22) {
       scoutingData.Auton_Won = filledIndices.length > 0 ? "Yes" : "No";
     } else if (index == 23) {
-      console.log("Filled Indices for Auto Actions:", filledIndices);
       scoutingData.Auto_Actions = {
         Ground_Intake: filledIndices.includes(0) ? "Yes" : "No",
         Human_Player_Intake: filledIndices.includes(1) ? "Yes" : "No",
@@ -398,7 +443,6 @@ function extractDataWithOpenCV(
         "Right Hang": filledIndices.includes(8) ? "Yes" : "No",
       };
     } else if (index == 24) {
-      console.log("Filled Indices for Auto Actions:", filledIndices);
       scoutingData.Teleop_Actions = {
         Ground_Intake: filledIndices.includes(0) ? "Yes" : "No",
         Human_Player_Intake: filledIndices.includes(1) ? "Yes" : "No",
