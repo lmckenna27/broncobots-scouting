@@ -27,3 +27,7 @@ yarn-error.log*
 *.swp
 *.swo
 
+.env.production
+package-lock.json
+src/App.jsx
+src/components/AuthScreen.jsx

@@ -44,8 +44,8 @@ function Toast({ message, type, onClose }) {
 }
 
 // ── Inner app — has access to router hooks ─────────────────────────────────
-function AppInner({ user, authLoaded, authError, signIn, signOut }) {
-  const location = useLocation();
+// Change this line (around line 43):
+function AppInner({ user, authLoaded, authError, signIn, signOut, signInAsGuest }) {  const location = useLocation();
   const { entries, addEntry, updateEntry, clearEntries, deleteEntry, clearEntriesByTeam } = useLiveEntries(user);
 
   const [config,  setConfig]  = useState(DEFAULT_CONFIG);
@@ -194,9 +194,18 @@ function AppInner({ user, authLoaded, authError, signIn, signOut }) {
     }
   };
 
-  if (!user) {
-    return <AuthScreen signIn={signIn} authError={authError} authLoaded={authLoaded} />;
-  }
+  // Change this:
+// Around line 175 in your original file:
+if (!user) {
+  return (
+    <AuthScreen 
+      signIn={signIn} 
+      authError={authError} 
+      authLoaded={authLoaded} 
+      signInAsGuest={signInAsGuest} // Make sure this is passed!
+    />
+  );
+}
 
   const pathParts = location.pathname.replace('/', '').split('/');
   const currentPage = pathParts[0] || 'entries';
@@ -230,7 +239,7 @@ function AppInner({ user, authLoaded, authError, signIn, signOut }) {
           <Route path="/"        element={<Navigate to="/entries" replace />} />
           <Route path="/entries" element={<ViewingPage teams={config.teams} entries={entries} user={user} updateEntry={updateEntry} deleteEntry={deleteEntry} />} />
           <Route path="/entries/:teamNumber" element={<ViewingPage teams={config.teams} entries={entries} user={user} updateEntry={updateEntry} deleteEntry={deleteEntry} />} />
-          <Route path="/input"   element={<InputPage teams={config.teams} onSubmit={addEntry} showToast={showToast} user={user} />} />
+          <Route path="/input"   element={<InputPage onSubmit={addEntry} showToast={showToast} user={user} />} />
           <Route path="/history" element={<HistoryPage history={history} user={user} onDeleteCompetition={handleDeleteArchivedCompetition} />} />
           <Route path="/history/:compId/:teamNumber" element={<HistoryPage history={history} user={user} onDeleteCompetition={handleDeleteArchivedCompetition} />} />
           <Route path="/display" element={<DisplayPage user={user} />} />
@@ -293,12 +302,29 @@ function AppInner({ user, authLoaded, authError, signIn, signOut }) {
 }
 
 // ── Root ───────────────────────────────────────────────────────────────────
+// ── Root ───────────────────────────────────────────────────────────────────
 function App() {
   const auth = useGoogleAuth();
-  
+  const [manualUser, setManualUser] = useState(null);
+
+  // This function mimics the Google login but stays local
+  const signInAsGuest = () => {
+    setManualUser({
+      uid: 'guest-123',
+      displayName: 'Guest Developer',
+      email: 'guest@example.com',
+      isAdmin: true // Setting this to true so you can see the ConfigPage
+    });
+  };
+
+  // If manualUser exists, we use that. Otherwise, we use the real Google Auth.
+  const activeAuth = manualUser 
+    ? { user: manualUser, authLoaded: true, authError: null, signIn: signInAsGuest, signOut: () => setManualUser(null) }
+    : { ...auth, signInAsGuest }; // Pass the guest function down
+
   return (
     <BrowserRouter>
-      <AppInner {...auth} />
+      <AppInner {...activeAuth} />
     </BrowserRouter>
   );
 }

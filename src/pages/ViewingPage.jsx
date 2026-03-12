@@ -96,6 +96,7 @@ function TeamCard({ team, onClick }) {
   // Get alliance color and position from last entry
   const allianceColor = team.lastEntry?.startingAlliance || '';
   const positionNum = team.lastEntry?.startingPosition || '';
+  //console.log('Rendering TeamCard for team', team.lastEntry);
 
   return (
     <div

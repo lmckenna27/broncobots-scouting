@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { avgField } from '../utils/stats';
+import { useParams, useNavigate } from 'react-router-dom';
 import RouteCanvas from './RouteCanvas';
 import { FormSection, FieldInput, FieldTextarea, Toggle, MultiToggle, MultiSelectToggle, VolumeInput } from './FormFields';
 
@@ -19,29 +20,55 @@ function Stat({ label, value }) {
   );
 }
 
-function BadgeRow({ label, value, colorMap = {} }) {
-  const color = value ? (colorMap[value.toLowerCase()] || 'default') : null;
-  // Use consistent styling similar to Speed badges (slow/medium/fast)
-  const getBadgeStyle = (val) => {
-    if (!val) return { background: 'rgba(100,116,139,0.2)', color: 'var(--text)' };
-    const v = val.toLowerCase();
-    if (v === 'red') return { background: 'rgba(239,68,68,0.2)', color: '#ef4444' };
-    if (v === 'blue') return { background: 'rgba(59,130,246,0.2)', color: '#3b82f6' };
-    if (v === 'yes') return { background: 'rgba(34,197,94,0.2)', color: '#22c55e' };
-    if (v === 'no') return { background: 'rgba(239,68,68,0.2)', color: '#ef4444' };
-    return { background: 'rgba(239,68,68,0.2)', color: '#ef4444' };
-  };
-  const badgeStyle = getBadgeStyle(value);
+// 1. Move the styling logic outside to share it between components
+const getBadgeStyle = (val) => {
+  if (!val) return { background: 'rgba(100,116,139,0.2)', color: 'var(--text)' };
+  const v = val.toString().toLowerCase();
+  
+  if (v === 'red' || v === 'no') return { background: 'rgba(239,68,68,0.2)', color: '#ef4444' };
+  if (v === 'blue') return { background: 'rgba(59,130,246,0.2)', color: '#3b82f6' };
+  if (v === 'yes') return { background: 'rgba(34,197,94,0.2)', color: '#22c55e' };
+  
+  return { background: 'rgba(107, 107, 107, 0.2)', color: '#a1a1a1' };
+};
+
+// Single Badge Row
+function BadgeRow({ label, value }) {
   return (
     <div className="badge-row">
       <span className="detail-stat-label">{label}</span>
-      {value
-        ? <span className="badge" style={badgeStyle}>{value}</span>
+      {value 
+        ? <span className="badge" style={getBadgeStyle(value)}>{value}</span>
         : <span className="badge badge-empty">—</span>
       }
     </div>
   );
 }
+
+// Multiple Badge Row
+function BadgeRows({ label, values = [] }) {
+  // 1. CONVERT JSON OBJECT TO ARRAY
+  // This takes { "0": "Left Hang" } and turns it into ["Left Hang"]
+  const dataArray = values && typeof values === 'object' 
+    ? Object.values(values) 
+    : [];
+
+  return (
+    <div className="badge-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+      <span className="detail-stat-label">{label}</span>
+      <div className="badge-container" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'flex-end' }}>
+        {dataArray.length > 0 ? (
+          dataArray.map((val, index) => (
+            <span key={index} className="badge" style={getBadgeStyle(val)}>
+              {val}
+            </span>
+          ))
+        ) : (
+          <span className="badge badge-empty">—</span>
+        )}
+      </div>
+    </div>
+  );}
 
 function AutoRoutesDisplay({ routes, onRouteClick }) {
   const W = 400;
@@ -262,34 +289,53 @@ function StartingPositionDisplay({ startingPosition }) {
   );
 }
 
+function MatchTypeDisplay({ matchType }) {
+  if (!matchType) {
+    return (
+      <div className="detail-stat">
+        <span className="detail-stat-label">Match Type</span>
+        <span className="detail-stat-value">—</span>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="detail-stat">
+      <span className="detail-stat-label">Match Type</span>
+      <span className="detail-stat-value">{matchType}</span>
+    </div>
+  );
+}
+
 // Blank form template
 const BLANK = {
-  teamName: '', teamNumber: '',
-  designDesc: '', fuelCapacity: '',
-  startingAlliance: '', startingPosition: '',
-  intakeMech: [],
-  speed: '',
-  speedCrossing: '',
-  autoTracking: '', shootMoving: '',
-  notes: '',
-  photos: [],
-  autoRoutes: [],
-  autoIntakeFuel: '', autoIntakeSec: '',
-  autoOuttakeFuel: '', autoOuttakeSec: '',
-  autoFuelScored: '',
-  leavePoint: '', autoClimb: '',
-  autoClimbSection: '', autoClimbLevel: '',
-  crossPastHub: '', crossPath: [],
-  teleopIntakeFuel: '', teleopIntakeSec: '',
-  teleopOuttakeFuel: '', teleopOuttakeSec: '',
-  teleopFuelScored: '',
-  teleopClimb: '', teleopClimbSection: '', teleopClimbLevel: '',
-  teleopCrossPath: [],
-  teleopCrossPastHub: '',
+  Student_ID: "",
+    Team_Number: "",
+    Match_Type: "Unknown",
+    Match_Number: "",
+    Alliance: "",
+    Overall_Ranking: "",
+    Starting_Position: "",
+    Accuracy: "",
+    Efficency: "",
+    Throughput: "",
+    Agility: "",
+    Storage: "",
+    Game_Won: "",
+    Auton_Won: "",
+    Auto_Actions: {},
+    Teleop_Actions: {},
+    Auto_Balls: "",
+    Teleop_Balls: "",
+    Alliance_Score: "",
+    Features: {},
+    Happenings: {},
 };
 
 export default function TeamDetailPage({ team, entries, onBack, onEditEntry, user, onUpdateEntry, onDeleteEntry }) {
   // Use string comparison to handle potential type differences between team numbers
+  const navigate = useNavigate();
+
   const teamEntries = entries.filter((e) => String(e.teamNumber) === String(team.number));
   const latest      = teamEntries[teamEntries.length - 1];
 
@@ -308,7 +354,23 @@ export default function TeamDetailPage({ team, entries, onBack, onEditEntry, use
   }, [teamEntries.length, selectedEntryIndex]);
 
   // Get the currently selected entry for display
-  const currentEntry = teamEntries[selectedEntryIndex] || latest;
+  let currentEntry = teamEntries[selectedEntryIndex] || latest;
+
+  //console.log('Current Entry:', currentEntry);
+
+  const hangMap = {
+                  0: "None",
+                  1: "Level 1",
+                  2: "Level 2",
+                  3: "Level 3"
+                };
+
+  // Use the map, or default to "Unknown" if the value isn't found
+  //console.log("Current Entry Hang Level:", currentEntry);
+  if(currentEntry.hangLevel != "None" && currentEntry.hangLevel != "Level 1" && currentEntry.hangLevel != "Level 2" && currentEntry.hangLevel != "Level 3" && currentEntry.hangLevel != "Unknown"){
+    currentEntry.hangLevel = hangMap[currentEntry.hangLevel] || "Unknown";
+  }
+
 
   const avgAuto   = avgField(teamEntries, 'autoFuelScored');
   const avgTeleop = avgField(teamEntries, 'teleopFuelScored');
@@ -384,6 +446,10 @@ export default function TeamDetailPage({ team, entries, onBack, onEditEntry, use
     setEditForm((f) => ({ ...f, intakeMech: next }));
   };
 
+  const handleBack = () => {
+    navigate('/entries');
+  };
+
   return (
     <div className="page-content">
       <button className="back-btn" onClick={onBack}>← Back to Teams</button>
@@ -430,14 +496,14 @@ export default function TeamDetailPage({ team, entries, onBack, onEditEntry, use
             <div className="detail-card">
               <h3>General</h3>
               {currentEntry.designDesc && <div className="design-desc">{currentEntry.designDesc}</div>}
-              <Stat label="Fuel Capacity"     value={currentEntry.fuelCapacity} />
-              <BadgeRow label="Alliance" value={currentEntry.startingAlliance} colorMap={{ red: 'danger', blue: 'cyan' }} />
+              {/* <Stat label="Fuel Capacity"     value={currentEntry.fuelCapacity} /> */}
+              <BadgeRow label="Alliance" value={currentEntry.alliance} colorMap={{ red: 'danger', blue: 'cyan' }} />
               <StartingPositionDisplay startingPosition={currentEntry.startingPosition} />
-              <IntakeMechanismDisplay intakeMech={currentEntry.intakeMech || []} />
-              <SpeedDisplay speed={currentEntry.speed} />
-              <SpeedCrossingDisplay speedCrossing={currentEntry.speedCrossing} />
-              <BadgeRow label="Auto Tracking"  value={currentEntry.autoTracking} colorMap={{ yes: 'success', no: 'muted' }} />
-              <BadgeRow label="Shoot While Moving"   value={currentEntry.shootMoving}  colorMap={{ yes: 'success', no: 'muted' }} />
+              <MatchTypeDisplay matchType={currentEntry.matchType} />
+              <Stat label="Match Number"     value={currentEntry.matchNumber} />
+              <Stat label="Total Alliance Score" value={currentEntry.allianceScore} />
+              <BadgeRow label="Won Game" value={currentEntry.gameWon} colorMap={{ Yes: 'green', No: 'danger' }} />
+
               {currentEntry.notes && (
                 <div className="detail-stat" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
                   <span className="detail-stat-label">Notes</span>
@@ -449,71 +515,46 @@ export default function TeamDetailPage({ team, entries, onBack, onEditEntry, use
             {/* Auto */}
             <div className="detail-card">
               <h3>Autonomous</h3>
-              <Stat label="Predicted Fuel Scored" value={avgAuto} />
-<BadgeRow label="Leave Point"    value={currentEntry.leavePoint}  colorMap={{ yes: 'success', no: 'danger' }} />
-              <BadgeRow label="Climb"          value={currentEntry.autoClimb}   colorMap={{ yes: 'success', no: 'danger' }} />
-              {currentEntry.autoClimb === 'yes' && (
-                <>
-                  <Stat label="Climb Section" value={currentEntry.autoClimbSection} />
-                  <Stat label="Climb Level"   value={currentEntry.autoClimbLevel} />
-                </>
-              )}
-              {currentEntry.crossPastHub === 'yes' ? (
-                currentEntry.crossPath && currentEntry.crossPath.length > 0 && (
-                  <CrossingPathDisplay crossPath={currentEntry.crossPath} label="Cross Path" />
-                )
-              ) : (
-                <BadgeRow label="Cross Past Hub" value={currentEntry.crossPastHub} colorMap={{ yes: 'success', no: 'danger' }} />
-              )}
-              
-              {/* Auto Routes Visualization */}
-              <div style={{ marginTop: 16, padding: 12, border: '1px dashed var(--border)', borderRadius: 8 }}>
-                {(() => {
-                  // Handle both array and object formats (object with numeric keys like {"0": [...]})
-                  let routesArray = [];
-                  if (Array.isArray(currentEntry.autoRoutes)) {
-                    routesArray = currentEntry.autoRoutes;
-                  } else if (currentEntry.autoRoutes && typeof currentEntry.autoRoutes === 'object') {
-                    // Convert object with numeric keys to array
-                    routesArray = Object.values(currentEntry.autoRoutes).filter(Array.isArray);
-                  }
-                  
-                  if (routesArray.length > 0) {
-                    return (
-                      <AutoRoutesDisplay 
-                        routes={routesArray} 
-                        onRouteClick={() => setShowAllRoutesModal(true)} 
-                      />
-                    );
-                  } else {
-                    return (
-                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-                        No routes drawn for this entry
-                      </div>
-                    );
-                  }
-                })()}
-              </div>
-            </div>
+              <BadgeRow label="Won Auton" value={currentEntry.autonWon} colorMap={{ Yes: 'green', No: 'danger' }} />
+              <Stat label="Predicted Fuel Scored" value={currentEntry.autoBalls} />
+              <BadgeRows 
+                      label="Actions" 
+                      values={currentEntry.autoActions} 
+                    />            </div>
 
             {/* Teleop */}
             <div className="detail-card">
-              <h3>Teleop</h3>
-<Stat label="Predicted Fuel Scored" value={avgTeleop} />
-              <BadgeRow label="Climb" value={currentEntry.teleopClimb} colorMap={{ yes: 'success', no: 'danger' }} />
-              {currentEntry.teleopClimb === 'yes' && (
-                <>
-                  <Stat label="Climb Section" value={currentEntry.teleopClimbSection} />
-                  <Stat label="Climb Level"   value={currentEntry.teleopClimbLevel} />
-                </>
-              )}
-              {currentEntry.teleopCrossPastHub === 'yes' ? (
-                currentEntry.teleopCrossPath && currentEntry.teleopCrossPath.length > 0 && (
-                  <CrossingPathDisplay crossPath={currentEntry.teleopCrossPath} label="Cross Path" />
-                )
-              ) : (
-                <BadgeRow label="Cross Past Hub" value={currentEntry.teleopCrossPastHub} colorMap={{ yes: 'success', no: 'danger' }} />
-              )}
+              <h3>TeleOp</h3>
+              <Stat label="Predicted Fuel Scored" value={currentEntry.teleopBalls} />
+              <BadgeRows 
+                      label="Actions" 
+                      values={currentEntry.teleopActions} 
+                    />
+            </div>
+
+            {/* Features */}
+            <div className="detail-card">
+              <h3>Robot Features and Happenings</h3>
+              <BadgeRows 
+                      label="Features" 
+                      values={currentEntry.features} 
+                    />
+              <BadgeRow label="Climb" value={currentEntry.hangLevel} colorMap={{ "None": 'danger', "Level 1": 'orange' , "Level 2": 'yellow', "Level 3": 'green'}} />
+              <BadgeRows 
+                label="Happenings" 
+                values={currentEntry.happenings} 
+              />
+            </div>
+
+            {/* Rankings */}
+            <div className="detail-card">
+              <h3>Post Match Rankings (Out of 6)</h3>
+              <BadgeRow label="Overall Ranking" value={currentEntry.overallRanking} colorMap={{ 0: 'danger', 1: 'green' , 2: 'Level 2', 3: 'Level 3'}} />
+              <BadgeRow label="Accuracy" value={currentEntry.accuracy} colorMap={{ 0: 'danger', 1: 'green' , 2: 'Level 2', 3: 'Level 3'}} />
+              <BadgeRow label="Efficiency" value={currentEntry.efficiency} colorMap={{ 0: 'danger', 1: 'green' , 2: 'Level 2', 3: 'Level 3'}} />
+              <BadgeRow label="Throughput" value={currentEntry.throughput} colorMap={{ 0: 'danger', 1: 'green' , 2: 'Level 2', 3: 'Level 3'}} />
+              <BadgeRow label="Agility" value={currentEntry.agility} colorMap={{ 0: 'danger', 1: 'green' , 2: 'Level 2', 3: 'Level 3'}} />
+              <BadgeRow label="Storage" value={currentEntry.storage} colorMap={{ 0: 'danger', 1: 'green' , 2: 'Level 2', 3: 'Level 3'}} />
             </div>
           </div>
 
@@ -570,76 +611,54 @@ export default function TeamDetailPage({ team, entries, onBack, onEditEntry, use
               <button className="modal-close" onClick={() => setShowEditModal(false)}>×</button>
             </div>
             <div className="modal-body">
-              <FormSection title="General Information">
+              <FormSection title="Match Information">
                 <div className="field">
                   <label>Team <span className="req">*</span></label>
                   <div style={{ padding: '8px 0', color: 'var(--text)' }}>
-                    {editForm.teamNumber} – {editForm.teamName}
+                    {editForm.teamNumber}
                   </div>
                 </div>
 
-                <FieldTextarea
-                  label="Basic Design Description"
+                <MultiToggle
+                  label="Match Type"
                   required
-                  value={editForm.designDesc}
-                  onChange={setEditField('designDesc')}
-                  placeholder="Describe the robot's design, notable mechanisms, unique features…"
-                  rows={3}
+                  options={['Practice', 'Qualifier', 'Final']}
+                  value={editForm.matchType}
+                  onChange={setEditField('matchType')}
                 />
-
                 <FieldInput
-                  label="Total Fuel Capacity"
+                  label="Match Number"
                   required
                   type="number"
-                  value={editForm.fuelCapacity}
-                  onChange={setEditField('fuelCapacity')}
-                  placeholder="e.g. 10"
-                  min="0"
+                  value={editForm.matchNumber}
+                  onChange={setEditField('match_Number')}
+                  placeholder="e.g. 1"
+                  min="1"
                 />
+                <MultiToggle
+                  label="Alliance"
+                  required
+                  options={['Red', 'Blue', 'Final']}
+                  value={editForm.alliance}
+                  onChange={setEditField('alliance')}
+                />
+                <MultiToggle
+                  label="Starting Position"
+                  required
+                  options={['1', '2', '3']}
+                  value={editForm.startingPosition}
+                  onChange={setEditField('startingPosition')}
+                />
+              </FormSection>
 
-                <div className="field two-col">
-                  <div>
-                    <label>Starting Alliance <span className="req">*</span></label>
-                    <div className="toggle-group" style={{ marginTop: 6 }}>
-                      {['Red', 'Blue'].map((a) => (
-                        <button
-                          key={a}
-                          onClick={() => setEditField('startingAlliance')(a)}
-                          className={`toggle-btn alliance-${a.toLowerCase()} ${editForm.startingAlliance === a ? 'active' : ''}`}
-                        >
-                          {a}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <MultiToggle
-                    label="Starting Position"
-                    required
-                    options={['1', '2', '3']}
-                    value={editForm.startingPosition}
-                    onChange={setEditField('startingPosition')}
-                  />
-                </div>
-
+              <FormSection title="Autonomous">
                 <MultiSelectToggle
-                  label="Intake Mechanism"
+                  label="Auto"
                   required
                   options={['Human Player', 'Ground Intake']}
                   value={editForm.intakeMech || []}
                   onChange={setEditField('intakeMech')}
                 />
-
-                <MultiToggle label="Speed" required options={['Slow', 'Medium', 'Fast']} value={editForm.speed} onChange={setEditField('speed')} />
-                <MultiToggle label="Speed When Crossing" required options={['Slow', 'Medium', 'Fast']} value={editForm.speedCrossing} onChange={setEditField('speedCrossing')} />
-                <Toggle label="Auto Tracking?" required value={editForm.autoTracking} onChange={setEditField('autoTracking')} />
-                <Toggle label="Shoot While Moving?" required value={editForm.shootMoving} onChange={setEditField('shootMoving')} />
-              </FormSection>
-
-              <FormSection title="Autonomous">
-                <div className="field" style={{ gridColumn: '1 / -1' }}>
-                  <label>Routes <span className="req">*</span> <span style={{ fontWeight: 400, opacity: 0.6, fontSize: 10 }}>(draw paths on the field)</span></label>
-                  <RouteCanvas value={editForm.autoRoutes || []} onChange={setEditField('autoRoutes')} />
-                </div>
 
                 <VolumeInput
                   label="Intaking Volume (fuel / sec)"
@@ -775,6 +794,7 @@ export default function TeamDetailPage({ team, entries, onBack, onEditEntry, use
                     onDeleteEntry && onDeleteEntry(editingEntry.id);
                     setShowDeleteConfirm(false);
                     setShowEditModal(false);
+                    handleBack();
                   }}
                   style={{ flex: 1 }}
                 >

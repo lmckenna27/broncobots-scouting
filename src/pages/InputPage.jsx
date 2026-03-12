@@ -1,169 +1,201 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   FormSection, FieldInput, FieldTextarea,
-  Toggle, MultiToggle, MultiSelectToggle, VolumeInput,
+  Toggle, MultiToggle, MultiSelectToggle
 } from '../components/FormFields';
-import RouteCanvas from '../components/RouteCanvas';
+import { processOMRScans } from '../utils/scanner.js';
+import mapJson from '../data/map.json';
+import '../styles/scanner.css'; // (Change this to '../App.css' if that's what your file is named!)
 
+// 1. Updated BLANK state to perfectly match your Scanner output
 const BLANK = {
   teamName: '', teamNumber: '',
-  designDesc: '', fuelCapacity: '',
-  startingAlliance: '', startingPosition: '',
-  intakeMech: [],
-  speed: '',
-  speedCrossing: '',
-  autoTracking: '', shootMoving: '',
-  notes: '',
-  autoRoutes: [],
-  autoIntakeFuel: '', autoIntakeSec: '',
-  autoOuttakeFuel: '', autoOuttakeSec: '',
-  autoFuelScored: '',
-  leavePoint: '', autoClimb: '',
-  autoClimbSection: '', autoClimbLevel: '',
-  crossPastHub: '', crossPath: [],
-  teleopIntakeFuel: '', teleopIntakeSec: '',
-  teleopOuttakeFuel: '', teleopOuttakeSec: '',
-  teleopFuelScored: '',
-  teleopClimb: '', teleopClimbSection: '', teleopClimbLevel: '',
-  teleopCrossPastHub: '', teleopCrossPath: [],
+  studentId: '', matchType: '', matchNumber: '',
+  alliance: '', startingPosition: '',
+  
+  autoBalls: '', autonWon: '',
+  autoActions: [], 
+
+  teleopBalls: '', 
+  teleopActions: [],
+
+  allianceScore: '', gameWon: '',
+  overallRanking: '', accuracy: '', efficiency: '',
+  throughput: '', agility: '', storage: '',
+
+  features: [], hangLevel: '',
+  happenings: [], notes: ''
 };
 
-export default function InputPage({ teams, onSubmit, showToast, user }) {
+export default function InputPage({onSubmit, showToast, user }) {
   const [form, setForm]             = useState(BLANK);
   const [submitted, setSubmitted]   = useState(false);
   const [uploading, setUploading]   = useState(false);
-  const [photoUrls, setPhotoUrls]   = useState([]);
-  const inputRef = useRef(null);
 
-  // Check for imported entry on mount
+  // --- Scanner Staging State ---
+  const [isCvLoaded, setIsCvLoaded] = useState(false);
+  const cvFileInputRef = useRef(null);
+  const [scanUiOpen, setScanUiOpen] = useState(false);
+  const [scanFile, setScanFile] = useState(null);
+  // Load initial value from local storage, or default to 0.011
+  // 1. Load the value immediately when the component starts
+  const [fillRatio, setFillRatio] = useState(() => {
+    const saved = localStorage.getItem('omr_fill_ratio');
+    const initialValue = saved ? parseFloat(saved) : 0.011;
+    //console.log("Loading slider from storage:", initialValue);
+    return initialValue;
+  });
+
+  // 2. This effect runs every time fillRatio changes to keep LocalStorage in sync
   useEffect(() => {
-    const importedData = sessionStorage.getItem('importedEntry');
-    if (importedData) {
-      try {
-        const entry = JSON.parse(importedData);
-        setForm({
-          teamName: entry.teamName || '',
-          teamNumber: entry.teamNumber || '',
-          designDesc: entry.designDesc || '',
-          fuelCapacity: entry.fuelCapacity || '',
-          startingAlliance: entry.startingAlliance || '',
-          startingPosition: entry.startingPosition || '',
-          intakeMech: entry.intakeMech || [],
-          speed: entry.speed || '',
-          speedCrossing: entry.speedCrossing || '',
-          autoTracking: entry.autoTracking || '',
-          shootMoving: entry.shootMoving || '',
-          notes: entry.notes || '',
-          autoRoutes: entry.autoRoutes || [],
-          autoIntakeFuel: entry.autoIntakeFuel || '',
-          autoIntakeSec: entry.autoIntakeSec || '',
-          autoOuttakeFuel: entry.autoOuttakeFuel || '',
-          autoOuttakeSec: entry.autoOuttakeSec || '',
-          autoFuelScored: entry.autoFuelScored || '',
-          leavePoint: entry.leavePoint || '',
-          autoClimb: entry.autoClimb || '',
-          autoClimbSection: entry.autoClimbSection || '',
-          autoClimbLevel: entry.autoClimbLevel || '',
-          crossPastHub: entry.crossPastHub || '',
-          crossPath: entry.crossPath || [],
-          teleopIntakeFuel: entry.teleopIntakeFuel || '',
-          teleopIntakeSec: entry.teleopIntakeSec || '',
-          teleopOuttakeFuel: entry.teleopOuttakeFuel || '',
-          teleopOuttakeSec: entry.teleopOuttakeSec || '',
-          teleopFuelScored: entry.teleopFuelScored || '',
-          teleopClimb: entry.teleopClimb || '',
-          teleopClimbSection: entry.teleopClimbSection || '',
-          teleopClimbLevel: entry.teleopClimbLevel || '',
-          teleopCrossPath: entry.teleopCrossPath || [],
-          teleopCrossPastHub: entry.teleopCrossPastHub || '',
-        });
-        showToast('Imported data from previous competition. Please review and submit.', 'info');
-        sessionStorage.removeItem('importedEntry');
-      } catch (e) {
-        console.error('Failed to parse imported entry:', e);
+    localStorage.setItem('omr_fill_ratio', fillRatio.toString());
+    //console.log("Saving slider to storage:", fillRatio);
+  }, [fillRatio]);
+  const [rawScanData, setRawScanData] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [showCanvas, setShowCanvas] = useState(false);
+
+  // Check OpenCV loaded
+  useEffect(() => {
+    const checkOpenCvReady = () => {
+      if (window.cv && window.cv.Mat) {
+        setIsCvLoaded(true);
+        return true;
       }
-    }
+      return false;
+    };
+    if (checkOpenCvReady()) return;
+    const intervalId = setInterval(() => {
+      if (checkOpenCvReady()) clearInterval(intervalId);
+    }, 100);
+    return () => clearInterval(intervalId);
   }, []);
 
   const set = (key) => (val) => setForm((f) => ({ ...f, [key]: val }));
 
+  // --- Scanner Logic ---
+  const handleCvButtonClick = () => {
+    if (cvFileInputRef.current) cvFileInputRef.current.click();
+  };
+
+  const handleCvFileChange = (event) => {
+    const files = event.target.files;
+    if (files.length > 0) {
+      const file = files[0];
+      setScanFile(file);
+      //setFillRatio(0.011); 
+      setScanUiOpen(true);
+      setShowCanvas(false);
+      setRawScanData(null);
+      
+      // Allow UI to render the container before scanning
+      setTimeout(() => runScanForFile(file), 50);
+    }
+    event.target.value = ''; 
+  };
+
+  const runScanForFile = async (file) => {
+    setIsScanning(true);
+    try {
+      const container = document.getElementById('cvOutputContainer');
+      if (container) container.innerHTML = ''; // Clear previous canvas
+
+      // CHANGE THIS LINE: Pass mapJson directly instead of a path string
+      const results = await processOMRScans(mapJson, [file], 'cvOutputContainer', fillRatio);
+      
+      const scan = results[0]; 
+
+      if (scan._Error) throw new Error(scan._Error);
+      setRawScanData(scan);
+    } catch (error) {
+      console.error("Scanner failed:", error);
+      showToast("Failed to process scan. Check console.", "error");
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleRatioSliderRelease = () => {
+    if (scanFile) runScanForFile(scanFile);
+  };
+
+  // --- Map Scanner Data to React Form ---
+  const applyScanDataToForm = () => {
+    if (!rawScanData) return;
+    const scan = rawScanData;
+
+    const cleanKey = (key) => key.replace(/_/g, ' ');
+
+  const autoActionsArr = Object.keys(scan.Auto_Actions || {})
+    .filter(k => scan.Auto_Actions[k] === "Yes")
+    .map(cleanKey); // Convert underscores to spaces
+
+  const teleopActionsArr = Object.keys(scan.Teleop_Actions || {})
+    .filter(k => scan.Teleop_Actions[k] === "Yes")
+    .map(cleanKey); // Convert underscores to spaces
+
+  const happeningsArr = Object.keys(scan.Happenings || {})
+    .filter(k => scan.Happenings[k] === "Yes")
+    .map(cleanKey);
+
+  // Repeat for features if needed
+  const featuresArr = Object.keys(scan.Features || {})
+    .filter(k => scan.Features[k] === "Yes" && k !== "Hang")
+    .map(cleanKey);
+
+    console.log ("Raw features Data:", scan.Features);
+    console.log ("Raw happenings Data:", scan.Happenings);
+
+    // NEW: Safely grab Starting Position (handles both String and Object formats)
+    let parsedStartPos = '';
+    if (typeof scan.Starting_Position === 'object') {
+      parsedStartPos = Object.keys(scan.Starting_Position || {}).find(k => scan.Starting_Position[k] === "Yes") || '';
+    } else {
+      parsedStartPos = String(scan.Starting_Position || '');
+    }
+
+    setForm(prev => ({
+      ...prev,
+      studentId: String(scan.Student_ID || ''),
+      teamNumber: String(scan.Team_Number || ''),
+      matchType: scan.Match_Type !== "None" ? scan.Match_Type : '',
+      matchNumber: String(scan.Match_Number || ''),
+      alliance: scan.Alliance !== "None" ? scan.Alliance : '',
+      
+      // Update this line to use our new parsed variable:
+      startingPosition: parsedStartPos,
+      
+      autoBalls: String(scan.Auto_Balls || ''),
+      // ... rest of the mappings stay the same
+      autoActions: autoActionsArr,
+      autonWon: scan.Auton_Won === "Yes" ? "yes" : "no",
+
+      teleopBalls: String(scan.Teleop_Balls || ''),
+      teleopActions: teleopActionsArr,
+
+      allianceScore: String(scan.Alliance_Score || ''),
+      gameWon: scan.Game_Won === "Yes" ? "yes" : "no",
+      overallRanking: String(scan.Overall_Ranking || ''),
+      accuracy: String(scan.Accuracy || ''),
+      efficiency: String(scan.Efficency || ''), 
+      throughput: String(scan.Throughput || ''),
+      agility: String(scan.Agility || ''),
+      storage: String(scan.Storage || ''),
+
+      features: featuresArr,
+      hangLevel: String(scan.Features?.Hang || ''),
+      happenings: happeningsArr,
+    }));
+
+    showToast("Form filled successfully!", "success");
+    setScanUiOpen(false); 
+  };
+
   const handleSubmit = async () => {
-    // Validation for ALL required fields
-    if (!form.teamName) { 
-      showToast('Please select a team.', 'warning');
-      return; 
-    }
-    if (!form.startingAlliance) {
-      showToast('Please select a starting alliance.', 'warning');
-      return;
-    }
-    if (!form.startingPosition) {
-      showToast('Please select a starting position.', 'warning');
-      return;
-    }
-    if (!form.intakeMech || form.intakeMech.length === 0) {
-      showToast('Please select an intake mechanism.', 'warning');
-      return;
-    }
-    if (!form.speed) {
-      showToast('Please select speed option.', 'warning');
-      return;
-    }
-    if (!form.speedCrossing) {
-      showToast('Please select speed when crossing.', 'warning');
-      return;
-    }
-    if (!form.autoTracking) {
-      showToast('Please select auto tracking option.', 'warning');
-      return;
-    }
-    if (!form.shootMoving) {
-      showToast('Please select shoot while moving option.', 'warning');
-      return;
-    }
-    if (!form.leavePoint) {
-      showToast('Please select leave point option.', 'warning');
-      return;
-    }
-    if (!form.autoRoutes || form.autoRoutes.length === 0) {
-      showToast('Please draw at least one route on the field.', 'warning');
-      return;
-    }
-    if (!form.autoClimb) {
-      showToast('Please select climb option.', 'warning');
-      return;
-    }
-    if (form.autoClimb === 'yes' && (!form.autoClimbSection || !form.autoClimbLevel)) {
-      showToast('Please select climb section and level.', 'warning');
-      return;
-    }
-    if (!form.crossPastHub) {
-      showToast('Please select cross past hub option.', 'warning');
-      return;
-    }
-    if (form.crossPastHub === 'yes' && (!form.crossPath || form.crossPath.length === 0)) {
-      showToast('Please select cross path.', 'warning');
-      return;
-    }
-    if (!form.teleopClimb) {
-      showToast('Please select teleop climb option.', 'warning');
-      return;
-    }
-    if (form.teleopClimb === 'yes' && (!form.teleopClimbSection || !form.teleopClimbLevel)) {
-      showToast('Please select climb section and level.', 'warning');
-      return;
-    }
-    if (!form.teleopCrossPastHub) {
-      showToast('Please select teleop cross past hub option.', 'warning');
-      return;
-    }
-    if (form.teleopCrossPastHub === 'yes' && (!form.teleopCrossPath || form.teleopCrossPath.length === 0)) {
-      showToast('Please select teleop cross path.', 'warning');
-      return;
-    }
+    if (!form.teamNumber) { showToast('Please enter a team number.', 'warning'); return; }
+    if (!form.matchNumber) { showToast('Please enter a match number.', 'warning'); return; }
 
     setUploading(true);
-
     const userName = user?.name || user?.email || 'Unknown';
     onSubmit({ ...form, id: Date.now(), timestamp: new Date().toISOString(), userName: userName });
     setForm(BLANK);
@@ -172,216 +204,138 @@ export default function InputPage({ teams, onSubmit, showToast, user }) {
     setTimeout(() => setSubmitted(false), 3500);
   };
 
+  const actionOptions = ['Ground Intake', 'Human Player Intake', 'Bump', 'Trench', 'Shoot To Area', 'Dump In Area', 'Left Hang', 'Center Hang', 'Right Hang'];
+  const ratingOptions = ['1', '2', '3', '4', '5','6'];
+
   return (
     <div className="page-content">
       <div className="page-header">
         <h1>Scout Entry</h1>
-        <p>Fill out all sections for each robot observation</p>
+        <p>Scan a sheet or manually fill out the observation</p>
+
+        {/* --- OpenCV Scanner Trigger --- */}
+        <div style={{ marginTop: '1rem' }}>
+          <input
+            type="file"
+            ref={cvFileInputRef}
+            onChange={handleCvFileChange}
+            accept="image/*, application/pdf"
+            style={{ display: 'none' }} 
+          />
+          <button
+            type="button"
+            onClick={handleCvButtonClick}
+            disabled={!isCvLoaded}
+            className="scan-upload-btn"
+          >
+            {!isCvLoaded ? 'Loading Scanner...' : 'Upload Sheet to Auto-Fill'}
+          </button>
+        </div>
+
+        {/* --- Scanner Settings & Preview Box --- */}
+        {scanUiOpen && (
+          <div className="scan-review-box">
+            <div className="scan-review-header">
+              <h3>Review Scan ({scanFile?.name})</h3>
+              <button onClick={() => setScanUiOpen(false)} className="scan-close-btn">
+                ✕ Close
+              </button>
+            </div>
+
+            <div>
+              <label className="scan-slider-label">
+                Fill Ratio Threshold: <span>{fillRatio.toFixed(3)}</span>
+                <div className="scan-slider-desc">
+                  If empty bubbles are being marked full, increase this. If filled bubbles are being missed, decrease it.
+                </div>
+              </label>
+              <input 
+                type="range" 
+                min="0.005" max="0.50" step="0.001" 
+                value={fillRatio} 
+                onChange={(e) => setFillRatio(parseFloat(e.target.value))}
+                onMouseUp={handleRatioSliderRelease} 
+                onTouchEnd={handleRatioSliderRelease}
+                className="scan-slider"
+              />
+            </div>
+
+            <div className="scan-canvas-wrapper">
+              <button onClick={() => setShowCanvas(!showCanvas)} className="scan-toggle-btn">
+                {showCanvas ? '▼ Hide Visual Output' : '▶ Show Visual Output'}
+              </button>
+              
+              {/* Output Container for OpenCV */}
+              <div 
+                id="cvOutputContainer" 
+                style={{ 
+                  display: showCanvas ? 'block' : 'none', 
+                  padding: '10px', 
+                  backgroundColor: 'var(--surface)', 
+                  overflowX: 'auto', 
+                  textAlign: 'center' 
+                }} 
+              />
+            </div>
+
+            <button
+              onClick={applyScanDataToForm}
+              disabled={isScanning || !rawScanData}
+              className="scan-accept-btn"
+            >
+              {isScanning ? 'Scanning...' : 'Accept Scan & Fill Form'}
+            </button>
+          </div>
+        )}
       </div>
 
       {submitted && <div className="success-toast"><span>Entry submitted successfully!</span></div>}
       {uploading && <div className="uploading-overlay"><span>Submitting...</span></div>}
+      
+      {/* ... Form Sections below stay exactly the same ... */}
 
-      {/* ── General ─────────────────────────────────────────────────────────── */}
-      <FormSection title="General Information">
-        <div className="field">
-          <label>Team <span className="req">*</span></label>
-          <select
-            value={form.teamName ? `${form.teamNumber}|${form.teamName}` : ''}
-            onChange={(e) => {
-              if (!e.target.value) return;
-              const [num, ...nameParts] = e.target.value.split('|');
-              setForm((f) => ({ ...f, teamNumber: num, teamName: nameParts.join('|') }));
-            }}
-          >
-            <option value="">— Select Team —</option>
-            {teams.map((t) => (
-              <option key={t.number} value={`${t.number}|${t.name}`}>
-                {t.number} – {t.name}
-              </option>
-            ))}
-          </select>
-          {teams.length === 0 && (
-            <span style={{ fontSize: 12, color: 'var(--warning)', marginTop: 4 }}>
-              No teams configured. Ask your admin to add teams in the Config page.
-            </span>
-          )}
-        </div>
+      {/* ── Form Fields ─────────────────────────────────────────────────────────── */}
+      <FormSection title="Match Information">
+        <FieldInput label="Student ID" type="number" value={form.studentId} onChange={set('studentId')} />
+        <FieldInput label="Team Number" required type="number" value={form.teamNumber} onChange={set('teamNumber')} />
+        
+        <MultiToggle label="Match Type" options={['Practice', 'Qualifier', 'Final']} value={form.matchType} onChange={set('matchType')} />
+        <FieldInput label="Match Number" required type="number" value={form.matchNumber} onChange={set('matchNumber')} />
+        
+        <MultiToggle label="Alliance" options={['Red', 'Blue']} value={form.alliance} onChange={set('alliance')} />
+        <MultiToggle label="Starting Position" options={['1', '2', '3']} value={form.startingPosition} onChange={set('startingPosition')} />      </FormSection>
 
-        <FieldTextarea
-          label="Basic Design Description"
-          required
-          value={form.designDesc}
-          onChange={set('designDesc')}
-          placeholder="Describe the robot's design, notable mechanisms, unique features…"
-          rows={3}
-        />
-
-        <FieldInput
-          label="Total Fuel Capacity"
-          required
-          type="number"
-          value={form.fuelCapacity}
-          onChange={set('fuelCapacity')}
-          placeholder="e.g. 10"
-          min="0"
-        />
-
-        <MultiToggle
-          label="Starting Position"
-          required
-          options={['1', '2', '3']}
-          value={form.startingPosition}
-          onChange={set('startingPosition')}
-        />
-        <MultiToggle
-          label="Starting Alliance"
-          required
-          options={['Red', 'Blue']}
-          value={form.startingAlliance}
-          onChange={set('startingAlliance')}
-        />
-
-        <MultiSelectToggle
-          label="Intake Mechanism"
-          required
-          options={['Human Player', 'Ground Intake']}
-          value={form.intakeMech}
-          onChange={set('intakeMech')}
-        />
-
-        <MultiToggle label="Speed" required options={['Slow', 'Medium', 'Fast']} value={form.speed} onChange={set('speed')} />
-        <MultiToggle label="Speed When Crossing" required options={['Slow', 'Medium', 'Fast']} value={form.speedCrossing} onChange={set('speedCrossing')} />
-        <Toggle label="Auto Tracking?" required value={form.autoTracking} onChange={set('autoTracking')} />
-        <Toggle label="Shoot While Moving?" required value={form.shootMoving} onChange={set('shootMoving')} />
-
-        <div className="field">
-          <label>Photos</label>
-          <input
-            ref={inputRef}
-            type="hidden"
-            role="uploadcare-uploader"
-            data-multiple="true"
-            data-images-only="true"
-            data-public-key="52c17ebdc1f9c6c7f786"
-          />
-          {photoUrls.length > 0 && (
-            <div className="photo-names" style={{ marginTop: '8px' }}>
-              {photoUrls.map((url, i) => (
-                <span key={i} style={{ display: 'block', marginBottom: '4px', color: '#4CAF50' }}>
-                  ✓ Photo {i + 1} uploaded
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </FormSection>
-
-      {/* ── Autonomous ──────────────────────────────────────────────────────── */}
       <FormSection title="Autonomous">
-        <div className="field" style={{ gridColumn: '1 / -1' }}>
-          <label>Routes <span className="req">*</span> <span style={{ fontWeight: 400, opacity: 0.6, fontSize: 10 }}>(draw paths on the field)</span></label>
-          <RouteCanvas value={form.autoRoutes} onChange={set('autoRoutes')} />
-        </div>
-
-        <VolumeInput
-          label="Intaking Volume (fuel / sec)"
-          required
-          fuelVal={form.autoIntakeFuel} secVal={form.autoIntakeSec}
-          onFuelChange={set('autoIntakeFuel')} onSecChange={set('autoIntakeSec')}
-        />
-        <VolumeInput
-          label="Outtaking Volume (fuel / sec)"
-          required
-          fuelVal={form.autoOuttakeFuel} secVal={form.autoOuttakeSec}
-          onFuelChange={set('autoOuttakeFuel')} onSecChange={set('autoOuttakeSec')}
-        />
-        <FieldInput
-          label="Predicted Fuel Scored"
-          required
-          type="number"
-          value={form.autoFuelScored}
-          onChange={set('autoFuelScored')}
-          min="0"
-        />
-
-        <Toggle label="Leave Point?" required value={form.leavePoint} onChange={set('leavePoint')} />
-        <Toggle label="Climb?" required value={form.autoClimb} onChange={set('autoClimb')} />
-        {form.autoClimb === 'yes' && (
-          <div className="nested-options">
-            <MultiToggle label="Climb Section" required options={['Left', 'Center', 'Right']} value={form.autoClimbSection} onChange={set('autoClimbSection')} />
-            <MultiToggle label="Climb Level" required options={['Level 1', 'Level 2', 'Level 3']} value={form.autoClimbLevel} onChange={set('autoClimbLevel')} />
-          </div>
-        )}
-
-        <Toggle label="Cross Past Hub?" required value={form.crossPastHub} onChange={set('crossPastHub')} />
-        {form.crossPastHub === 'yes' && (
-          <div className="nested-options">
-            <MultiSelectToggle
-              label="Cross Path"
-              required
-              options={['Left Bump', 'Right Bump', 'Left Trench', 'Right Trench']}
-              value={form.crossPath}
-              onChange={set('crossPath')}
-            />
-          </div>
-        )}
+        <FieldInput label="Auto Balls Scored" type="number" value={form.autoBalls} onChange={set('autoBalls')} />
+        <MultiSelectToggle label="Auto Actions Taken" options={actionOptions} value={form.autoActions} onChange={set('autoActions')} />
+        <Toggle label="Auton Won?" value={form.autonWon} onChange={set('autonWon')} />
       </FormSection>
 
-      {/* ── Teleop ──────────────────────────────────────────────────────────── */}
       <FormSection title="Teleop">
-        <VolumeInput
-          label="Intaking Volume (fuel / sec)"
-          required
-          fuelVal={form.teleopIntakeFuel} secVal={form.teleopIntakeSec}
-          onFuelChange={set('teleopIntakeFuel')} onSecChange={set('teleopIntakeSec')}
-        />
-        <VolumeInput
-          label="Outtaking Volume (fuel / sec)"
-          required
-          fuelVal={form.teleopOuttakeFuel} secVal={form.teleopOuttakeSec}
-          onFuelChange={set('teleopOuttakeFuel')} onSecChange={set('teleopOuttakeSec')}
-        />
-        <FieldInput
-          label="Predicted Fuel Scored"
-          required
-          type="number"
-          value={form.teleopFuelScored}
-          onChange={set('teleopFuelScored')}
-          min="0"
-        />
-
-        <Toggle label="Climb?" required value={form.teleopClimb} onChange={set('teleopClimb')} />
-        {form.teleopClimb === 'yes' && (
-          <div className="nested-options">
-            <MultiToggle label="Climb Section" required options={['Left', 'Center', 'Right']} value={form.teleopClimbSection} onChange={set('teleopClimbSection')} />
-            <MultiToggle label="Climb Level" required options={['Level 1', 'Level 2', 'Level 3']} value={form.teleopClimbLevel} onChange={set('teleopClimbLevel')} />
-          </div>
-        )}
-
-        <Toggle label="Cross Past Hub?" required value={form.teleopCrossPastHub} onChange={set('teleopCrossPastHub')} />
-        {form.teleopCrossPastHub === 'yes' && (
-          <div className="nested-options">
-            <MultiSelectToggle
-              label="Cross Path"
-              required
-              options={['Left Bump', 'Right Bump', 'Left Trench', 'Right Trench']}
-              value={form.teleopCrossPath}
-              onChange={set('teleopCrossPath')}
-            />
-          </div>
-        )}
+        <FieldInput label="Teleop Balls Scored" type="number" value={form.teleopBalls} onChange={set('teleopBalls')} />
+        <MultiSelectToggle label="Teleop Actions Taken" options={actionOptions} value={form.teleopActions} onChange={set('teleopActions')} />
       </FormSection>
 
-      {/* ── Notes ────────────────────────────────────────────────────────────── */}
+      <FormSection title="Robot Features & Happenings">
+        <MultiSelectToggle label="Features" options={['Auto Aim', 'Turret', 'Dual/Drum', 'Expaning']} value={form.features} onChange={set('features')} />
+        <FieldInput label="Hang Level" type="number" value={form.hangLevel} onChange={set('hangLevel')} placeholder="0 for none" />
+        <MultiSelectToggle label="Happenings" options={['Beached', 'Electrical', 'Disabled', 'Penalty', 'No Show']} value={form.happenings} onChange={set('happenings')} />
+      </FormSection>
+
+      <FormSection title="Post-Match Ratings (1-6)">
+        <FieldInput label="Alliance Score" type="number" value={form.allianceScore} onChange={set('allianceScore')} />
+        <Toggle label="Game Won?" value={form.gameWon} onChange={set('gameWon')} />
+        
+        <MultiToggle label="Overall Ranking" options={ratingOptions} value={form.overallRanking} onChange={set('overallRanking')} />
+        <MultiToggle label="Accuracy" options={ratingOptions} value={form.accuracy} onChange={set('accuracy')} />
+        <MultiToggle label="Efficiency" options={ratingOptions} value={form.efficiency} onChange={set('efficiency')} />
+        <MultiToggle label="Throughput" options={ratingOptions} value={form.throughput} onChange={set('throughput')} />
+        <MultiToggle label="Agility" options={ratingOptions} value={form.agility} onChange={set('agility')} />
+        <MultiToggle label="Storage" options={ratingOptions} value={form.storage} onChange={set('storage')} />
+      </FormSection>
+
       <FormSection title="Notes">
-        <FieldTextarea
-          label="Additional Notes"
-          value={form.notes}
-          onChange={set('notes')}
-          placeholder="Any other observations about the robot..."
-          rows={4}
-        />
+        <FieldTextarea label="Additional Notes" value={form.notes} onChange={set('notes')} placeholder="Any other observations..." rows={4} />
       </FormSection>
 
       <div className="form-actions">
@@ -392,4 +346,3 @@ export default function InputPage({ teams, onSubmit, showToast, user }) {
     </div>
   );
 }
-

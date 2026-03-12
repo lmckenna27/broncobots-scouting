@@ -1,29 +1,21 @@
 import '../styles/auth.css';
 
-export default function AuthScreen({ signIn, authError, authLoaded }) {
+// Inside AuthScreen.jsx
+function AuthScreen({ signIn, authError, authLoaded, signInAsGuest }) {
   return (
-    <div className="auth-screen">
-      <div className="auth-card">
-<img 
-          src="https://i.postimg.cc/k4SY1s2m/Asset-1.jpg" 
-          alt="FRC Scouting" 
-          className="auth-logo" 
-          style={{ width: 80, height: 80, objectFit: 'contain' }}
-        />
-        <h1>FTC Scouting Portal</h1>
-        <p className="auth-team">Brophy Broncobots</p>
-        <p className="auth-sub">
-          Sign in with your <strong>@brophybroncos.org</strong> or{' '}
-          <strong>@brophyprep.org</strong> Google account to continue.
-        </p>
+    <div className="auth-container">
+       <h1>Welcome</h1>
+       <button onClick={signIn}>Sign in with Google</button>
+       
+       {/* The Bypass Button */}
+       <button 
+         onClick={signInAsGuest} 
+         style={{ marginTop: '10px', backgroundColor: '#666' }}
+       >
+         Bypass (Guest Login)
+       </button>
 
-        {authError && <div className="auth-error">{authError}</div>}
-
-        <button className="google-btn" onClick={signIn} disabled={!authLoaded}>
-          <GoogleIcon />
-          {authLoaded ? 'Sign in with Google' : 'Loading…'}
-        </button>
-      </div>
+       {authError && <p className="error">{authError}</p>}
     </div>
   );
 }
@@ -38,3 +30,4 @@ function GoogleIcon() {
     </svg>
   );
 }
+export default AuthScreen;
